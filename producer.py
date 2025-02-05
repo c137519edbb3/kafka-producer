@@ -32,19 +32,21 @@ class VideoProducer:
         finally:
             admin_client.close()
 
-    def send_frame(self, frame_base64):
+    def send_frame(self, frame_base64, camera_id):
         self.producer.send(self.topic_name, {
             'frame': frame_base64,
-            'timestamp': str(datetime.datetime.now())
+            'timestamp': str(datetime.datetime.now()),
+            'camera_id': camera_id
         })
 
 class CameraProducer(VideoProducer):
-    def __init__(self, camera_url, topic_name, kafka_bootstrap_servers=Config.KAFKA_BOOTSTRAP_SERVER_URL, retry_interval=5):
+    def __init__(self, camera_url, topic_name, camera_id, kafka_bootstrap_servers=Config.KAFKA_BOOTSTRAP_SERVER_URL, retry_interval=5):
         super().__init__(topic_name, kafka_bootstrap_servers)
         self.camera_url = camera_url
         self.retry_interval = retry_interval
         self.camera = None
         self.connected = False
+        self.camera_id = camera_id
 
     def connect_camera(self):
         try:
@@ -64,11 +66,11 @@ class CameraProducer(VideoProducer):
             while True:
                 if not self.connected or not self.camera.isOpened():
                     retry_count += 1
-                    print(f"Attempting to connect to camera (attempt {retry_count})")
+                    print(f"Camera {self.camera_id}: Attempting to connect (attempt {retry_count})")
                     if self.connect_camera():
                         retry_count = 0
                     else:
-                        print(f"Connection failed, retrying in {self.retry_interval} seconds...")
+                        print(f"Camera {self.camera_id}: Connection failed, retrying in {self.retry_interval} seconds...")
                         sleep(self.retry_interval)
                         continue
 
@@ -79,19 +81,44 @@ class CameraProducer(VideoProducer):
                 
                 _, buffer = cv2.imencode('.jpg', frame)
                 frame_base64 = base64.b64encode(buffer).decode('utf-8')
-                self.send_frame(frame_base64)
+                self.send_frame(frame_base64, self.camera_id)
                 sleep(1)
                 
         except KeyboardInterrupt:
-            print("Stopping stream...")
+            print(f"Camera {self.camera_id}: Stopping stream...")
         finally:
             if self.camera:
                 self.camera.release()
             self.producer.close()
 
 if __name__ == "__main__":
+    cameras = [
+        {
+            "url": "https://192.168.1.102:8080/video",
+            "id": "camera_1"
+        },
+        {
+            "url": "https://192.168.1.103:8080/video",
+            "id": "camera_2"
+        }
+    ]
 
-    camera_url = "https://192.168.1.102:8080/video"
+    import threading
+    threads = []
+    
+    for camera in cameras:
+        producer = CameraProducer(
+            camera_url=camera['url'],
+            topic_name='camera_feed',
+            camera_id=camera['id']
+        )
+        thread = threading.Thread(target=producer.start_streaming)
+        thread.daemon = True
+        threads.append(thread)
+        thread.start()
 
-    producer = CameraProducer(topic_name='camera_feed', camera_url=camera_url)
-    producer.start_streaming()
+    try:
+        while True:
+            sleep(1)
+    except KeyboardInterrupt:
+        print("Stopping all streams...")
