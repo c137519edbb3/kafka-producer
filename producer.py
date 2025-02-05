@@ -39,39 +39,54 @@ class VideoProducer:
         })
 
 class CameraProducer(VideoProducer):
-    def __init__(self, camera_url, topic_name, kafka_bootstrap_servers=Config.KAFKA_BOOTSTRAP_SERVER_URL):
+    def __init__(self, camera_url, topic_name, kafka_bootstrap_servers=Config.KAFKA_BOOTSTRAP_SERVER_URL, retry_interval=5):
         super().__init__(topic_name, kafka_bootstrap_servers)
-        # Connect to IP camera
-        self.camera = cv2.VideoCapture(camera_url)
-        if not self.camera.isOpened():
-            raise Exception(f"Failed to connect to IP camera at {camera_url}")
-        print(f"Successfully connected to IP camera at {camera_url}")
-        
+        self.camera_url = camera_url
+        self.retry_interval = retry_interval
+        self.camera = None
+        self.connected = False
+
+    def connect_camera(self):
+        try:
+            self.camera = cv2.VideoCapture(self.camera_url)
+            if self.camera.isOpened():
+                self.connected = True
+                print(f"Successfully connected to IP camera at {self.camera_url}")
+                return True
+            return False
+        except Exception as e:
+            print(f"Camera connection error: {e}")
+            return False
+
     def start_streaming(self):
+        retry_count = 0
         try:
             while True:
+                if not self.connected or not self.camera.isOpened():
+                    retry_count += 1
+                    print(f"Attempting to connect to camera (attempt {retry_count})")
+                    if self.connect_camera():
+                        retry_count = 0
+                    else:
+                        print(f"Connection failed, retrying in {self.retry_interval} seconds...")
+                        sleep(self.retry_interval)
+                        continue
+
                 success, frame = self.camera.read()
                 if not success:
-                    print("Failed to capture frame from IP camera")
-                    sleep(1)
+                    self.connected = False
                     continue
                 
-                # Convert frame to base64 string for sending via Kafka
                 _, buffer = cv2.imencode('.jpg', frame)
                 frame_base64 = base64.b64encode(buffer).decode('utf-8')
-                
-                # Send frame to Kafka
                 self.send_frame(frame_base64)
-                # print('Frame sent to Kafka Broker')
                 sleep(1)
                 
         except KeyboardInterrupt:
             print("Stopping stream...")
-        except Exception as e:
-            print(f"Error during streaming: {e}")
         finally:
-            print("Closing camera connection...")
-            self.camera.release()
+            if self.camera:
+                self.camera.release()
             self.producer.close()
 
 if __name__ == "__main__":
