@@ -7,6 +7,7 @@ from kafka.errors import TopicAlreadyExistsError
 from time import sleep
 import base64
 
+from auth import Auth
 from config import Config
 
 class VideoProducer:
@@ -92,15 +93,24 @@ class CameraProducer(VideoProducer):
             self.producer.close()
 
 if __name__ == "__main__":
+    auth = Auth()
+    if not auth.login():
+        print("Failed to authenticate with EyeconAI API")
+        exit(1)
+
+    cameras_data = auth.get_online_cameras()
+    if not cameras_data:
+        print("No online cameras found")
+        exit(1)
+
+
     cameras = [
         {
-            "url": "https://192.168.1.102:8080/video",
-            "id": "camera_1"
-        },
-        {
-            "url": "https://192.168.1.103:8080/video",
-            "id": "camera_2"
+            "url": camera["ipAddress"],
+            "id": camera['cameraId'],
+            "location": camera["location"]
         }
+        for camera in cameras_data
     ]
 
     import threading
