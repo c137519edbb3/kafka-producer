@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  producer:
+    build: .
+    network_mode: host  # Gives access to both local camera and Kafka
+    env_file:
+      - .env
+    environment:
+      - KAFKA_BOOTSTRAP_SERVER_URL=${KAFKA_BOOTSTRAP_SERVER_URL}
+      - EYECONAI_API_URL=${EYECONAI_API_URL}
+      - EYECONAI_USERNAME=${EYECONAI_USERNAME}
+      - EYECONAI_PASSWORD=${EYECONAI_PASSWORD}
+    restart: unless-stopped
