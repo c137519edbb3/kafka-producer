@@ -9,6 +9,8 @@ from kafka.errors import TopicAlreadyExistsError
 from time import sleep
 import base64
 
+from config import Config
+
 class VideoProducer:
     def __init__(self, topic_name, bootstrap_servers=['localhost:9092']):
         self.topic_name = topic_name
@@ -39,7 +41,7 @@ class VideoProducer:
         })
 
 class CameraProducer(VideoProducer):
-    def __init__(self, camera_url, topic_name, kafka_bootstrap_servers='localhost:9092'):
+    def __init__(self, camera_url, topic_name, kafka_bootstrap_servers=Config.KAFKA_BOOTSTRAP_SERVER_URL):
         super().__init__(topic_name, kafka_bootstrap_servers)
         # Connect to IP camera
         self.camera = cv2.VideoCapture(camera_url)
