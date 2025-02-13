@@ -33,21 +33,23 @@ class VideoProducer:
         finally:
             admin_client.close()
 
-    def send_frame(self, frame_base64, camera_id):
+    def send_frame(self, frame_base64, camera_id, organization_id):
         self.producer.send(self.topic_name, {
             'frame': frame_base64,
-            'timestamp': str(datetime.datetime.now()),
-            'camera_id': camera_id
+            'timestamp': str(datetime.datetime.now().timestamp()),
+            'camera_id': camera_id,
+            'organization_id': organization_id
         })
 
 class CameraProducer(VideoProducer):
-    def __init__(self, camera_url, topic_name, camera_id, kafka_bootstrap_servers=Config.KAFKA_BOOTSTRAP_SERVER_URL, retry_interval=5):
+    def __init__(self, camera_url, topic_name, camera_id, kafka_bootstrap_servers="34.132.217.189:9092", retry_interval=5, organization_id=1):
         super().__init__(topic_name, kafka_bootstrap_servers)
         self.camera_url = camera_url
         self.retry_interval = retry_interval
         self.camera = None
         self.connected = False
         self.camera_id = camera_id
+        self.organization_id = organization_id
 
     def connect_camera(self):
         try:
@@ -82,7 +84,7 @@ class CameraProducer(VideoProducer):
                 
                 _, buffer = cv2.imencode('.jpg', frame)
                 frame_base64 = base64.b64encode(buffer).decode('utf-8')
-                self.send_frame(frame_base64, self.camera_id)
+                self.send_frame(frame_base64, self.camera_id, self.organization_id)
                 sleep(1)
                 
         except KeyboardInterrupt:
@@ -120,7 +122,8 @@ if __name__ == "__main__":
         producer = CameraProducer(
             camera_url=camera['url'],
             topic_name='camera_feed',
-            camera_id=camera['id']
+            camera_id=camera['id'],
+            organization_id=int(auth.user.get("organization", {}).get("id", 1))
         )
         thread = threading.Thread(target=producer.start_streaming)
         thread.daemon = True
